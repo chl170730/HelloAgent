@@ -1,16 +1,17 @@
 from collections import defaultdict
 
-# 数据：(类别, 值)
-data = [('水果', '苹果'), ('水果', '香蕉'), ('蔬菜', '胡萝卜'), ('水果', '橙子')]
+# Data: (category, value)
+data = [('Fruit', 'Apple'), ('Fruit', 'Banana'), ('Vegetable', 'Carrot'), ('Fruit', 'Orange')]
 
-# 创建默认值为列表的字典
-mp = defaultdict(list)
-print(mp)
+# Create a dictionary with default value as list
+grouped_data = defaultdict(list)
 
-# 直接追加，无需判断键是否存在
+# Append directly without checking if the key exists
 for category, item in data:
-    mp[category].append(item)
-    print(dict(mp))
+    grouped_data[category].append(item)
 
-print(f'[dict(mp)]: {dict(mp)}')
-# 输出：{'水果': ['苹果', '香蕉', '橙子'], '蔬菜': ['胡萝卜']}
+# Convert back to normal dict if necessary
+result = dict(grouped_data)
+
+# Output: {'Fruit': ['Apple', 'Banana', 'Orange'], 'Vegetable': ['Carrot']}
+print(result)

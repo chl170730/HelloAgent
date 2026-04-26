@@ -1,7 +1,7 @@
 import re
 import random
 
-# 定义规则库：模式(正则表达式) -> 响应模板列表
+# Define rule base: pattern (regex) -> list of response templates
 rules = {
     r'I need (.*)': [
         "Why do you need {0}?",
@@ -40,7 +40,7 @@ rules = {
     ]
 }
 
-# 定义代词转换规则
+# Pronoun swap rules
 pronoun_swap = {
     "i": "you", "you": "i", "me": "you", "my": "your",
     "am": "are", "are": "am", "was": "were", "i'd": "you would",
@@ -48,32 +48,34 @@ pronoun_swap = {
     "mine": "yours"
 }
 
+
 def swap_pronouns(phrase):
     """
-    对输入短语中的代词进行第一/第二人称转换
+    Swap first/second person pronouns in the input phrase.
     """
     words = phrase.lower().split()
     swapped_words = [pronoun_swap.get(word, word) for word in words]
     return " ".join(swapped_words)
 
+
 def respond(user_input):
     """
-    根据规则库生成响应
+    Generate a response based on the rule base.
     """
     for pattern, responses in rules.items():
         match = re.search(pattern, user_input, re.IGNORECASE)
         if match:
-            # 捕获匹配到的部分
+            # Capture the matched group
             captured_group = match.group(1) if match.groups() else ''
-            # 进行代词转换
+            # Swap pronouns
             swapped_group = swap_pronouns(captured_group)
-            # 从模板中随机选择一个并格式化
+            # Choose a template at random and format
             response = random.choice(responses).format(swapped_group)
             return response
-    # 如果没有匹配任何特定规则，使用最后的通配符规则
+    # Fallback to the wildcard rule if no specific pattern matches
     return random.choice(rules[r'.*'])
 
-# 主聊天循环
+# Main chat loop
 if __name__ == '__main__':
     print("Therapist: Hello! How can I help you today?")
     while True:

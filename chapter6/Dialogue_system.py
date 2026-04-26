@@ -1,8 +1,8 @@
 """
-智能搜索助手 - 基于 LangGraph + Tavily API 的真实搜索系统
-1. 理解用户需求
-2. 使用Tavily API真实搜索信息
-3. 生成基于搜索结果的回答
+Intelligent Search Assistant - Real search system based on LangGraph + Tavily API
+1. Understand user intent
+2. Use Tavily API to perform real web search
+3. Generate answers based on search results
 """
 from pathlib import Path
 import asyncio
@@ -16,21 +16,21 @@ import os
 from dotenv import load_dotenv
 from tavily import TavilyClient
 
-# 加载环境变量
+# Load environment variables
 load_dotenv()
 
 
-# 定义状态结构
+# Define state schema
 class SearchState(TypedDict):
     messages: Annotated[list, add_messages]
-    user_query: str  # 用户查询
-    search_query: str  # 优化后的搜索查询
-    search_results: str  # Tavily搜索结果
-    final_answer: str  # 最终答案
-    step: str  # 当前步骤
+    user_query: str  # User query
+    search_query: str  # Optimized search query
+    search_results: str  # Tavily search results
+    final_answer: str  # Final answer
+    step: str  # Current step
 
 
-# 初始化模型和Tavily客户端
+# Initialize model and Tavily client
 llm = ChatOpenAI(
     model=os.getenv("LLM_MODEL_ID", "gpt-4o-mini"),
     api_key=os.getenv("LLM_API_KEY"),
@@ -38,65 +38,73 @@ llm = ChatOpenAI(
     temperature=0.7
 )
 # Tavily API key should be configured in the .env file as TAVILY_API_KEY=...
-# 初始化Tavily客户端
+# Initialize Tavily client
 tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 
 
-def understand_query_node(state: SearchState) -> SearchState:
-    """步骤1：理解用户查询并生成搜索关键词"""
+def _ensure_str(content) -> str:
+    """Convert various response content types to a string safely."""
+    if isinstance(content, str):
+        return content
+    try:
+        return str(content)
+    except Exception:
+        return ""
 
-    # 获取最新的用户消息
+
+def understand_query_node(state: SearchState) -> SearchState:
+    """Step 1: Understand user query and generate search keywords"""
+
+    # Get the latest human message from the state
     user_message = ""
     for msg in reversed(state["messages"]):
         if isinstance(msg, HumanMessage):
             user_message = msg.content
             break
 
-    understand_prompt = f"""分析用户的查询："{user_message}"
-
-请完成两个任务：
-1. 简洁总结用户想要了解什么
-2. 生成最适合搜索的关键词（中英文均可，要精准）
-
-格式：
-理解：[用户需求总结]
-搜索词：[最佳搜索关键词]"""
+    understand_prompt = f"""Analyze the user's query: "{user_message}"\n\n
+Please complete two tasks:
+1. Briefly summarize what the user wants to know
+2. Generate the best search keywords (English preferred, concise and precise)\n\n
+Format:
+Understanding: [summary of user intent]
+Search terms: [best search keywords]"""
 
     if not user_message.strip():
-        raise ValueError("未能从 state['messages'] 中读取到用户问题，请检查 initial_state['messages'] 是否包含 HumanMessage。")
+        raise ValueError("Could not read user query from state['messages']. Please ensure initial_state['messages'] contains a HumanMessage.")
 
     response = llm.invoke([
-        SystemMessage(content="你是一个搜索查询改写助手。你需要理解用户问题，并生成适合搜索引擎使用的关键词。"),
+        SystemMessage(content="You are a search query rewriting assistant. Understand the user question and generate search-engine-friendly keywords."),
         HumanMessage(content=understand_prompt)
     ])
 
-    # 提取搜索关键词
-    response_text = response.content
-    search_query = user_message  # 默认使用原始查询
+    # Extract search keywords safely
+    response_text = _ensure_str(response.content)
+    search_query = user_message  # Default to the original query
 
-    if "搜索词：" in response_text:
-        search_query = response_text.split("搜索词：")[1].strip()
-    elif "搜索关键词：" in response_text:
-        search_query = response_text.split("搜索关键词：")[1].strip()
+    if "Search terms:" in response_text:
+        search_query = response_text.split("Search terms:", 1)[1].strip()
+    elif "Search keywords:" in response_text:
+        search_query = response_text.split("Search keywords:", 1)[1].strip()
 
     return {
         "user_query": user_message,
         "search_query": search_query,
         "step": "understood",
-        "messages": [AIMessage(content=f"我理解您的需求：{response.content}")]
+        "messages": [AIMessage(content=f"I understand your request: {_ensure_str(response.content)}")]
     }
 
 
 def tavily_search_node(state: SearchState) -> SearchState:
-    """步骤2：使用Tavily API进行真实搜索"""
+    """Step 2: Use Tavily API for real search"""
 
-    search_query = state["search_query"]
+    search_query = state.get("search_query", "")
 
     try:
-        print(f"🔍 正在搜索: {search_query}")
+        print(f"🔍 Searching: {search_query}")
 
-        # 调用Tavily搜索API
+        # Call Tavily search API
         response = tavily_client.search(
             query=search_query,
             search_depth="basic",
@@ -105,108 +113,91 @@ def tavily_search_node(state: SearchState) -> SearchState:
             max_results=5
         )
 
-        # 处理搜索结果
+        # Process search results
         search_results = ""
 
-        # 优先使用Tavily的综合答案
+        # Prefer Tavily's summary answer first
         if response.get("answer"):
-            search_results = f"综合答案：\n{response['answer']}\n\n"
+            search_results = f"Summary answer:\n{response['answer']}\n\n"
 
-        # 添加具体的搜索结果
+        # Add individual results
         if response.get("results"):
-            search_results += "相关信息：\n"
+            search_results += "Related information:\n"
             for i, result in enumerate(response["results"][:3], 1):
                 title = result.get("title", "")
                 content = result.get("content", "")
                 url = result.get("url", "")
-                search_results += f"{i}. {title}\n{content}\n来源：{url}\n\n"
+                search_results += f"{i}. {title}\n{content}\nSource: {url}\n\n"
 
         if not search_results:
-            search_results = "抱歉，没有找到相关信息。"
+            search_results = "Sorry, no relevant information was found."
 
         return {
             "search_results": search_results,
             "step": "searched",
-            "messages": [AIMessage(content=f"✅ 搜索完成！找到了相关信息，正在为您整理答案...")]
+            "messages": [AIMessage(content="✅ Search completed! I found relevant information and am organizing the answer...")]
         }
 
     except Exception as e:
-        error_msg = f"搜索时发生错误: {str(e)}"
+        error_msg = f"An error occurred during search: {str(e)}"
         print(f"❌ {error_msg}")
 
         return {
-            "search_results": f"搜索失败：{error_msg}",
+            "search_results": f"Search failed: {error_msg}",
             "step": "search_failed",
-            "messages": [AIMessage(content="❌ 搜索遇到问题，我将基于已有知识为您回答")]
+            "messages": [AIMessage(content="❌ Search encountered a problem. I will answer based on existing knowledge.")]
         }
 
 
 def generate_answer_node(state: SearchState) -> SearchState:
-    """步骤3：基于搜索结果生成最终答案"""
+    """Step 3: Generate final answer based on search results"""
 
-    # 检查是否有搜索结果
-    if state["step"] == "search_failed":
-        # 如果搜索失败，基于LLM知识回答
-        fallback_prompt = f"""搜索API暂时不可用，请基于您的知识回答用户的问题：
-
-用户问题：{state['user_query']}
-
-请提供一个有用的回答，并说明这是基于已有知识的回答。"""
+    # If search failed, answer based on the LLM's internal knowledge
+    if state.get("step") == "search_failed":
+        fallback_prompt = f"""The search API is temporarily unavailable. Please answer based on your existing knowledge:\n\nUser question: {state.get('user_query', '')}\n\nPlease provide a helpful answer and clearly state that it is based on existing knowledge."""
 
         response = llm.invoke([
-            SystemMessage(content="你是一个问答助手。搜索 API 不可用时，不要给出任何超越时效性，真实性的答案。"),
+            SystemMessage(content="You are a QA assistant. If the search API is unavailable, do not provide claims that exceed timeliness or verifiability."),
             HumanMessage(content=fallback_prompt)
         ])
 
         return {
-            "final_answer": response.content,
+            "final_answer": _ensure_str(response.content),
             "step": "completed",
-            "messages": [AIMessage(content=response.content)]
+            "messages": [AIMessage(content=_ensure_str(response.content))]
         }
 
-    # 基于搜索结果生成答案
-    answer_prompt = f"""基于以下搜索结果为用户提供完整、准确的答案：
-
-用户问题：{state['user_query']}
-
-搜索结果：
-{state['search_results']}
-
-请要求：
-1. 综合搜索结果，提供准确、有用的回答
-2. 如果是技术问题，提供具体的解决方案或代码
-3. 引用重要信息的来源
-4. 回答要结构清晰、易于理解
-5. 如果搜索结果不够完整，请说明并提供补充建议"""
+    # Otherwise synthesize an answer from search results
+    answer_prompt = f"""Provide a complete and accurate answer based on the following search results:\n\nUser question: {state.get('user_query', '')}\n\nSearch results:\n{state.get('search_results', '')}\n\nRequirements:\n1. Synthesize the search results into an accurate and useful answer\n2. If it is a technical question, provide concrete solutions or code\n3. Cite sources for key information\n4. Keep the answer well-structured and easy to understand\n5. If results are incomplete, explain that and provide follow-up suggestions"""
 
     response = llm.invoke([
-        SystemMessage(content="你是一个严谨的搜索结果总结助手。必须基于用户问题和搜索结果回答。"),
+        SystemMessage(content="You are a rigorous search-result summarization assistant. You must answer based on the user's question and search results."),
         HumanMessage(content=answer_prompt)
     ])
 
     return {
-        "final_answer": response.content,
+        "final_answer": _ensure_str(response.content),
         "step": "completed",
-        "messages": [AIMessage(content=response.content)]
+        "messages": [AIMessage(content=_ensure_str(response.content))]
     }
 
 
-# 构建搜索工作流
+# Build search workflow
 def create_search_assistant():
     workflow = StateGraph(SearchState)
 
-    # 添加三个节点
+    # Add three nodes
     workflow.add_node("understand", understand_query_node)
     workflow.add_node("search", tavily_search_node)
     workflow.add_node("answer", generate_answer_node)
 
-    # 设置线性流程
+    # Linear flow
     workflow.add_edge(START, "understand")
     workflow.add_edge("understand", "search")
     workflow.add_edge("search", "answer")
     workflow.add_edge("answer", END)
 
-    # 编译图
+    # Compile graph
     memory = InMemorySaver()
     app = workflow.compile(checkpointer=memory)
     current_dir = Path(__file__).resolve().parent
@@ -214,36 +205,36 @@ def create_search_assistant():
     try:
         png_data = app.get_graph().draw_mermaid_png()
         png_path.write_bytes(png_data)
-        print(f"PNG 图片已保存到: {png_path}")
+        print(f"PNG image saved to: {png_path}")
     except Exception as e:
-        print(f"PNG 图片生成失败: {e}")
-        print("你仍然可以打开 langgraph_workflow.mmd，复制其中内容到 Mermaid Live Editor 查看图。")
+        print(f"PNG generation failed: {e}")
+        print("You can still open langgraph_workflow.mmd and paste the content into Mermaid Live Editor to view the graph.")
 
     return app
 
 
 async def main():
-    """主函数：运行智能搜索助手"""
+    """Main function: run the intelligent search assistant"""
 
-    # 检查API密钥
+    # Check API key
     if not os.getenv("TAVILY_API_KEY"):
-        print("❌ 错误：请在.env文件中配置TAVILY_API_KEY")
+        print("❌ Error: Please configure TAVILY_API_KEY in the .env file")
         return
 
     app = create_search_assistant()
 
-    print("🔍 智能搜索助手启动！")
-    print("我会使用Tavily API为您搜索最新、最准确的信息")
-    print("支持各种问题：新闻、技术、知识问答等")
-    print("(输入 'quit' 退出)\n")
+    print("🔍 Intelligent Search Assistant started!")
+    print("I will use Tavily API to find up-to-date and accurate information")
+    print("Supports all kinds of questions: news, technology, knowledge QA, etc.")
+    print("(Type 'quit' to exit)\n")
 
     session_count = 0
 
     while True:
-        user_input = input("🤔 您想了解什么: ").strip()
+        user_input = input("🤔 What would you like to know: ").strip()
 
-        if user_input.lower() in ['quit', 'q', '退出', 'exit']:
-            print("感谢使用！再见！👋")
+        if user_input.lower() in ['quit', 'q', 'exit']:
+            print("Thanks for using this assistant. Goodbye! 👋")
             break
 
         if not user_input:
@@ -252,7 +243,7 @@ async def main():
         session_count += 1
         config = {"configurable": {"thread_id": f"search-session-{session_count}"}}
 
-        # 初始状态
+        # Initial state
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "user_query": "",
@@ -265,24 +256,24 @@ async def main():
         try:
             print("\n" + "=" * 60)
 
-            # 执行工作流
+            # Execute workflow
             async for output in app.astream(initial_state, config=config):
                 for node_name, node_output in output.items():
                     if "messages" in node_output and node_output["messages"]:
                         latest_message = node_output["messages"][-1]
                         if isinstance(latest_message, AIMessage):
                             if node_name == "understand":
-                                print(f"🧠 理解阶段: {latest_message.content}")
+                                print(f"🧠 Understanding stage: {latest_message.content}")
                             elif node_name == "search":
-                                print(f"🔍 搜索阶段: {latest_message.content}")
+                                print(f"🔍 Search stage: {latest_message.content}")
                             elif node_name == "answer":
-                                print(f"\n💡 最终回答:\n{latest_message.content}")
+                                print(f"\n💡 Final answer:\n{latest_message.content}")
 
             print("\n" + "=" * 60 + "\n")
 
         except Exception as e:
-            print(f"❌ 发生错误: {e}")
-            print("请重新输入您的问题。\n")
+            print(f"❌ Error occurred: {e}")
+            print("Please try asking your question again.\n")
 
 
 if __name__ == "__main__":

@@ -1,47 +1,48 @@
 from pathlib import Path
 from typing import TypedDict, List
 
-# 定义全局状态的数据结构
+# Define the global state data structure
 class AgentState(TypedDict):
-    messages: List[str]      # 对话历史
-    current_task: str        # 当前任务
-    final_answer: str        # 最终答案
-    # ... 任何其他需要追踪的状态
+    messages: List[str]      # Conversation history
+    current_task: str        # Current task
+    final_answer: str        # Final answer
+    # ... any other state fields you want to track
 
 
-# 定义一个“规划者”节点函数
+# Define a "planner" node function
 def planner_node(state: AgentState) -> AgentState:
-    """根据当前任务制定计划，并更新状态。"""
+    """Create a plan based on the current task and update state."""
     current_task = state["current_task"]
-    # ... 调用LLM生成计划 ...
-    plan = f"为任务 '{current_task}' 生成的计划..."
+    # ... call an LLM to generate a plan ...
+    plan = f"Plan generated for task '{current_task}'..."
 
-    # 将新消息追加到状态中
+    # Append new message to state
     state["messages"].append(plan)
     return state
 
 
-# 定义一个“执行者”节点函数
+# Define an "executor" node function
 def executor_node(state: AgentState) -> AgentState:
-    """执行最新计划，并更新状态。"""
+    """Execute the latest plan and update state."""
     latest_plan = state["messages"][-1]
-    # ... 执行计划并获得结果 ...
-    result = f"执行计划 '{latest_plan}' 的结果..."
+    # ... execute the plan and obtain results ...
+    result = f"Result of executing plan '{latest_plan}'..."
 
     state["messages"].append(result)
     return state
 
+
 def final_node(state: AgentState) -> AgentState:
-    """整理最终答案，并更新状态。"""
+    """Assemble the final answer and update state."""
     state["final_answer"] = state["messages"][-1]
     return state
 
 
 def should_continue(state: AgentState) -> str:
-    """条件函数：根据状态决定下一步路由。"""
-    # 假设如果消息少于3条，则需要继续规划
+    """Condition function: decide routing based on state."""
+    # Example: if messages are fewer than 3, continue planning
     if len(state["messages"]) < 3:
-        # 返回的字符串需要与添加条件边时定义的键匹配
+        # Return value must match keys used to add conditional edges
         return "continue_to_planner"
     else:
         return "go_to_final"
@@ -49,68 +50,68 @@ def should_continue(state: AgentState) -> str:
 
 from langgraph.graph import StateGraph, END
 
-# 初始化一个状态图，并绑定我们定义的状态结构
+# Initialize a state graph and bind our state structure
 workflow = StateGraph(AgentState)
 
-# 将节点函数添加到图中
+# Add node functions to the graph
 workflow.add_node("planner", planner_node)
 workflow.add_node("executor", executor_node)
 workflow.add_node("final", final_node)
 
-# 设置图的入口点
+# Set the graph entry point
 workflow.set_entry_point("planner")
 
-# 添加常规边，连接 planner 和 executor
+# Add a regular edge connecting planner -> executor
 workflow.add_edge("planner", "executor")
 
-# 添加条件边，实现动态路由
+# Add conditional edges to implement dynamic routing
 workflow.add_conditional_edges(
-    # 起始节点
+    # start node
     "executor",
-    # 判断函数
+    # condition function
     should_continue,
-    # 路由映射：将判断函数的返回值映射到目标节点
+    # routing map: map the condition function's return to a target node
     {
-        "continue_to_planner": "planner",  # 如果返回"continue_to_planner"，则跳回planner节点
-        "go_to_final": "final"              # 如果返回"go_to_final"，则进入最终整理节点
+        "continue_to_planner": "planner",  # if returns "continue_to_planner", jump back to planner
+        "go_to_final": "final"              # if returns "go_to_final", go to final node
     }
 )
 
-# final 节点执行完后结束流程
+# After final node, end the flow
 workflow.add_edge("final", END)
 
-# 编译图，生成可执行的应用
+# Compile graph into an executable app
 app = workflow.compile()
 
-# 1. 输出 Mermaid 图代码：可以复制到 Mermaid Live Editor 或支持 Mermaid 的 Markdown 中查看
+# 1. Print Mermaid diagram source (copy to Mermaid Live Editor or Markdown that supports Mermaid)
 mermaid_code = app.get_graph().draw_mermaid()
-print("\n===== Mermaid 图代码 =====")
+print("\n===== Mermaid diagram source =====")
 print(mermaid_code)
 
-# 2. 保存 Mermaid 源文件
+# 2. Save Mermaid source file
 current_dir = Path(__file__).resolve().parent
 mermaid_path = current_dir / "langgraph_workflow.mmd"
 mermaid_path.write_text(mermaid_code, encoding="utf-8")
-print(f"\nMermaid 源文件已保存到: {mermaid_path}")
+print(f"\nMermaid source saved to: {mermaid_path}")
 
-# 3. 保存 PNG 图片
-# 注意：draw_mermaid_png() 默认可能访问 mermaid.ink；如果网络不稳定，这一步可能失败。
+# 3. Save PNG image
+# Note: draw_mermaid_png() may access mermaid.ink; this step can fail if the network is unreliable.
 png_path = current_dir / "langgraph_workflow.png"
 try:
     png_data = app.get_graph().draw_mermaid_png()
     png_path.write_bytes(png_data)
-    print(f"PNG 图片已保存到: {png_path}")
+    print(f"PNG image saved to: {png_path}")
 except Exception as e:
-    print(f"PNG 图片生成失败: {e}")
-    print("你仍然可以打开 langgraph_workflow.mmd，复制其中内容到 Mermaid Live Editor 查看图。")
+    print(f"PNG generation failed: {e}")
+    print("You can still open langgraph_workflow.mmd and paste the content into Mermaid Live Editor to view the graph.")
 
-# 运行图
+# Run the graph with example input
 inputs = {
-    "current_task": "分析最近的AI行业新闻",
+    "current_task": "Analyze recent AI industry news",
     "messages": [],
     "final_answer": ""
 }
 
-print("\n===== LangGraph 执行过程 =====")
+print("\n===== LangGraph execution trace =====")
 for event in app.stream(inputs):
     print(event)

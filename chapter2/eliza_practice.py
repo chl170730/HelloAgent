@@ -1,29 +1,27 @@
 """
-ELIZA 练习脚本
+ELIZA practice script
 
-目标：
-1. 不看答案，自己把这个简化版 ELIZA 写出来
-2. 先把骨架补全，再逐步补细节
-3. 每完成一个 TODO，就运行一次测试
+Goals:
+1. Implement a simplified ELIZA without looking at the answer.
+2. Fill the skeleton first, then progressively refine details.
+3. Run tests after completing each TODO.
 
-建议练法：
-- 第一遍：只写能跑通的最小版本
-- 第二遍：补全代词替换
-- 第三遍：补全更多规则
+Practice suggestions:
+- First pass: implement a minimal working version
+- Second pass: add pronoun swapping
+- Third pass: expand rules
 """
 
 import re
 import random
 
 # TODO 1:
-# 定义规则库 rules
-# 结构应为：
+# Define the rule base `rules` with the structure:
 # {
-#     正则表达式: [回复模板1, 回复模板2, ...],
+#     regex_pattern: [response_template1, response_template2, ...],
 #     ...
 # }
-#
-# 至少包含下面这些规则：
+# Include at least these rules:
 # 1. r'I need (.*)'
 # 2. r'I am (.*)'
 # 3. r'.* mother .*'
@@ -104,8 +102,7 @@ rules = {
 
 
 # TODO 2:
-# 定义代词转换字典 pronoun_swap
-# 至少包含：
+# Define the pronoun conversion dictionary `pronoun_swap` with at least:
 # i -> you
 # you -> i
 # me -> you
@@ -122,6 +119,7 @@ memory = {
     "age":None,
     "job":None,
 }
+
 
 def memory_response(user_input):
     lowered = user_input.lower().strip()
@@ -155,6 +153,7 @@ def memory_response(user_input):
 
     return None
 
+
 def update_memory(user_input):
     name_match = re.search(r'my name is (\w+)', user_input, re.IGNORECASE)
     if name_match:
@@ -170,29 +169,28 @@ def update_memory(user_input):
 
 def swap_pronouns(phrase):
     """
-    对输入短语中的代词进行第一/第二人称转换
+    Swap first/second person pronouns in the input phrase.
 
-    例子：
+    Example:
     "I need my rest" -> "you need your rest"
     """
     # TODO 3:
-    # 1. 把 phrase 转成小写
+    # 1. Lowercase the phrase
     phrase = phrase.lower()
-    # 2. 用 split() 拆成单词列表
+    # 2. Split into words with split()
     words = phrase.split()
-    # 3. 对每个单词做字典替换：如果在 pronoun_swap 中，就替换；否则保持原样
+    # 3. Replace each word if it's in pronoun_swap, otherwise keep it
     swapped_words = [pronoun_swap.get(word,word) for word in words]
-    # 4. 用 " ".join(...) 拼回字符串
+    # 4. Join back into a string
     return " ".join(swapped_words)
 
 
 def respond(user_input):
     """
-    根据规则库生成响应
+    Generate a response based on the rule base.
     """
     # TODO 4:
-    # 调用记忆模块回复，如果记忆模块返回了回复，就直接返回这个回复，否则执行下面的规则匹配
-    # 遍历 rules 中的每一条规则
+    # Call memory_response first; if it returns a reply, return it directly. Otherwise perform rule matching.
     mem_reply = memory_response(user_input)
     if mem_reply:
         return mem_reply
@@ -208,7 +206,7 @@ def respond(user_input):
 
 def run_manual_tests():
     """
-    你可以在写完后取消注释，快速测试
+    You can uncomment and run this to perform quick tests.
     """
     test_inputs = [
         "My name is Tom",
@@ -234,7 +232,7 @@ def run_manual_tests():
         print()
 
 
-# 主聊天循环
+# Main chat loop
 if __name__ == '__main__':
     print("Therapist: Hello! How can I help you today?")
 
@@ -243,7 +241,7 @@ if __name__ == '__main__':
         user_input = input("You: ")
 
         # TODO 11:
-        # 如果用户输入是 quit / exit / bye，则打印告别语并退出循环
+        # If user input is quit / exit / bye, print farewell and break
         if user_input.lower() in ["quit", "exit","bye"]:
             print("Therapist: Goodbye. It was nice talking to you.")
             break
@@ -252,40 +250,39 @@ if __name__ == '__main__':
         # TODO 12:
         response = respond(user_input)
         print(f"Therapist: {response}")
-        # 调用 respond(user_input) 得到回复
-        # 然后打印：
+        # Call respond(user_input) to get a reply
+        # Then print:
         # Therapist: xxx
 
 
-    # 写完后可以打开这行测试
+    # After finishing you can run the quick tests
     run_manual_tests()
-
 
 """
 ========================
-自测标准
+Self-test checklist
 ========================
 
-第 1 级：能运行
-- 程序能启动
-- 输入一句话后能返回一句回复
-- 输入 quit 能正常退出
+Level 1: Basic
+- Program starts
+- Replies to an input
+- Input 'quit' exits cleanly
 
-第 2 级：能匹配
-- "I need a rest" 能触发 I need 规则
-- "I am tired" 能触发 I am 规则
-- 包含 mother 的句子能触发 mother 规则
-- 其他内容能落到兜底规则 r'.*'
+Level 2: Pattern matching
+- "I need a rest" triggers I need rule
+- "I am tired" triggers I am rule
+- Sentences containing 'mother' trigger mother rule
+- Other inputs fall back to wildcard rule r'.*'
 
-第 3 级：能替换
+Level 3: Pronoun swapping
 - captured_group = "my book"
-- swap_pronouns(captured_group) 后得到 "your book"
+- swap_pronouns(captured_group) -> "your book"
 
-第 4 级：能扩展
-你自己加下面任意两个：
+Level 4: Extensions
+Add any two of the following:
 - r'I feel (.*)'
 - r'.* father .*'
-- 空输入特殊处理
-- 支持更多代词替换
-- 支持中文提示
+- special handling for empty input
+- support more pronoun replacements
+- support Chinese prompts
 """
